@@ -139,37 +139,9 @@
     .context-menu-item:hover {
       background-color: #f0f0f0;
     }
-    /* ============ AVATAR ============ */
-    /* Ô tròn hiển thị ảnh avatar – không làm ảnh hưởng giao diện chính */
-    #avatar-container {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      overflow: hidden;
-      cursor: pointer;
-      border: 2px solid #ddd;
-      background: #fff;
-      z-index: 1000;
-    }
-    #avatar-container img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
   </style>
 </head>
 <body>
-  <!-- Avatar container (ô tròn góc phải) -->
-  <div id="avatar-container">
-    <!-- Sử dụng ảnh mặc định (placeholder); khi load file mới sẽ thay đổi -->
-    <img id="avatar-img" src="https://via.placeholder.com/50" alt="Avatar">
-  </div>
-  <!-- Hidden file input để chọn ảnh avatar -->
-  <input type="file" id="avatar-input" accept="image/*" style="display: none;">
-
   <!-- Sidebar chứa tiêu đề và danh sách note -->
   <div id="sidebar">
     <h3>KEN MEDIA</h3>
@@ -205,7 +177,7 @@
     }
     // Hàm định dạng tên note:
     // Nếu có customTitle thì dùng customTitle, ngược lại sử dụng key theo định dạng "dd/mm/yyyy (HH:MM)".
-    // Nếu note được đánh dấu quan trọng (important = true) thì thêm biểu tượng 👑 ở đầu.
+    // Sau đó, nếu note được đánh dấu quan trọng (important = true) thì luôn thêm biểu tượng vương miện (👑) ở đầu.
     function formatNoteKey(key, noteObj) {
       let base = "";
       if (noteObj.customTitle && noteObj.customTitle.trim() !== "") {
@@ -500,13 +472,13 @@
       var C1 = (0.1734 - 0.000393 * T) * Math.sin(M * dr) +
                0.0021 * Math.sin(2 * dr * M) -
                0.4068 * Math.sin(Mpr * dr) +
-               0.0161 * Math.sin(2 * dr * Mpr) - 
+               0.0161 * Math.sin(2 * dr * Mpr) -
                0.0004 * Math.sin(3 * dr * Mpr);
       C1 = C1 + 0.0104 * Math.sin(2 * dr * F) -
            0.0051 * Math.sin(dr * (M + Mpr)) -
            0.0074 * Math.sin(dr * (M - Mpr)) +
            0.0004 * Math.sin(dr * (2 * F + M)) -
-           0.0004 * Math.sin(dr * (2 * F - M)) - 
+           0.0004 * Math.sin(dr * (2 * F - M)) -
            0.0006 * Math.sin(dr * (2 * F + Mpr)) +
            0.0010 * Math.sin(dr * (2 * F - Mpr)) +
            0.0005 * Math.sin(dr * (2 * Mpr + M));
@@ -605,7 +577,6 @@
       } else {
         addNewNote();
       }
-      loadAvatar(); // Load ảnh avatar từ localStorage nếu có
     }
     window.addEventListener('load', init);
     
@@ -616,31 +587,6 @@
     document.getElementById('clear-selected').addEventListener('click', clearSelectedNotes);
     // Auto lưu nội dung note khi người dùng nhập (để khi refresh vẫn lưu lại nội dung)
     document.getElementById('note-content').addEventListener('input', saveCurrentNote);
-
-    // ---------- XỬ LÝ AVATAR ----------
-    function loadAvatar() {
-      const avatarData = localStorage.getItem('avatar');
-      if (avatarData) {
-        document.getElementById('avatar-img').src = avatarData;
-      }
-    }
-    // Khi nhấp vào ô avatar sẽ kích hoạt input chọn file
-    document.getElementById('avatar-container').addEventListener('click', function() {
-      document.getElementById('avatar-input').click();
-    });
-    // Sau khi chọn file, đọc file thành DataURL và lưu vào localStorage
-    document.getElementById('avatar-input').addEventListener('change', function() {
-      const file = this.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const dataUrl = e.target.result;
-          document.getElementById('avatar-img').src = dataUrl;
-          localStorage.setItem('avatar', dataUrl);
-        };
-        reader.readAsDataURL(file);
-      }
-    });
     
   </script>
 </body>
