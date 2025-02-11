@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Note Công Việc - KEN MEDIA</title>
+  <style>
+    /* Các style cơ bản */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    /* Sidebar */
+    #sidebar {
+      width: 220px;
+      background: #f4f4f4;
+      border-right: 1px solid #ddd;
+      padding: 10px;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    #sidebar h3 {
+      margin-top: 0;
+      text-align: center;
+    }
+    .note-item {
+      padding: 4px;
+      margin: 4px 0;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    /* Nếu note được đánh dấu quan trọng thì thay đổi màu nền */
+    .note-item.important {
+      background-color: #ffe0e0;
+    }
+    .note-item.active {
+      background-color: #eaeaea;
+    }
+    .note-item input[type="checkbox"] {
+      margin-right: 5px;
+    }
+    .note-item span {
+      flex: 1;
+    }
+    /* Phần ghi chú chính */
+    #main {
+      flex: 1;
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Header của note: hiển thị tiêu đề và các nút, căn giữa */
+    #note-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    /* Sắp xếp các nút theo thứ tự: Xóa note - Tải ghi chú về - Clear Selected - Dấu + */
+    #note-header .buttons {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      align-items: center;
+    }
+    /* Style cho các nút */
+    #delete-note {
+      background-color: transparent;
+      color: red;
+      border: 1px solid red;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Cập nhật nút "Tải ghi chú về" cùng kiểu với nút "Xóa note" */
+    #download-note {
+      background-color: transparent;
+      color: red;
+      border: 1px solid red;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Nút "Clear Selected" đổi thành màu vàng đồng nhạt với viền đen */
+    #clear-selected {
+      background-color: #FAFAD2;
+      color: black;
+      border: 1px solid black;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Nút "+" đổi thành nền xanh dương, chữ trắng, nằm sát nút "Clear Selected" */
+    #add-note {
+      background-color: blue;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Box nhập nội dung note */
+    #note-content {
+      flex: 1;
+      font-size: 16px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: none;
+      min-height: 60vh;
+    }
+    /* Phần hiển thị thông tin thời gian */
+    #timestamp {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+    /* Custom context menu */
+    #context-menu {
+      display: none;
+      position: absolute;
+      background: #fff;
+      border: 1px solid #ccc;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .context-menu-item {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .context-menu-item:hover {
+      background-color: #f0f0f0;
+    }
+    /* ============ AVATAR ============ */
+    /* Ô tròn hiển thị ảnh avatar – không làm ảnh hưởng giao diện chính */
+    #avatar-container {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      overflow: hidden;
+      cursor: pointer;
+      border: 2px solid #ddd;
+      background: #fff;
+      z-index: 1000;
+    }
+    #avatar-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <!-- Avatar container (ô tròn góc phải) -->
+  <div id="avatar-container">
+    <!-- Sử dụng ảnh mặc định (placeholder); khi load file mới sẽ thay đổi -->
+    <img id="avatar-img" src="https://via.placeholder.com/50" alt="Avatar">
+  </div>
+  <!-- Hidden file input để chọn ảnh avatar -->
+  <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+
+  <!-- Sidebar chứa tiêu đề và danh sách note -->
+  <div id="sidebar">
+    <h3>KEN MEDIA</h3>
+    <div id="notes-list"></div>
+  </div>
+  
+  <!-- Phần ghi chú chính -->
+  <div id="main">
+    <div id="note-header">
+      <span id="note-title"></span>
+      <div class="buttons">
+        <button id="delete-note">Xóa note</button>
+        <button id="download-note">Tải ghi chú về</button>
+        <button id="clear-selected">Clear Selected</button>
+        <button id="add-note">+</button>
+      </div>
+    </div>
+    <textarea id="note-content" placeholder="nhập nội dung ghi chú .................."></textarea>
+    <div id="timestamp"></div>
+  </div>
+  
+  <!-- Custom context menu -->
+  <div id="context-menu">
+    <div id="context-download" class="context-menu-item">Tải ghi chú về .txt</div>
+    <div id="context-delete" class="context-menu-item">Xóa note</div>
+    <div id="context-crown" class="context-menu-item"></div>
+  </div>
+  
+  <script>
+    // ---------- HÀM HỖ TRỢ ----------
+    function pad(num) {
+      return String(num).padStart(2, '0');
+    }
+    // Hàm định dạng tên note:
+    // Nếu có customTitle thì dùng customTitle, ngược lại sử dụng key theo định dạng "dd/mm/yyyy (HH:MM)".
+    // Nếu note được đánh dấu quan trọng (important = true) thì thêm biểu tượng 👑 ở đầu.
+    function formatNoteKey(key, noteObj) {
+      let base = "";
+      if (noteObj.customTitle && noteObj.customTitle.trim() !== "") {
+        base = noteObj.customTitle;
+      } else {
+        let parts = key.split("_");
+        if (parts.length !== 2) return key;
+        let dateParts = parts[0].split("-");
+        let timeParts = parts[1].split("-");
+        if (dateParts.length !== 3 || timeParts.length < 2) return key;
+        base = dateParts[2] + "/" + dateParts[1] + "/" + dateParts[0] + " (" + timeParts[0] + ":" + timeParts[1] + ")";
+      }
+      if (noteObj.important) {
+        return "👑 " + base;
+      }
+      return base;
+    }
+    
+    // ---------- QUẢN LÝ NOTE ----------
+    // Mỗi note được lưu dưới dạng: { content: string, customTitle: string, important: boolean }
+    let notes = {};
+    let currentNote = null;
+    
+    // Tải note từ localStorage (chuyển đổi nếu cần)
+    function loadNotes() {
+      const saved = localStorage.getItem('notes');
+      if (saved) {
+        try {
+          notes = JSON.parse(saved);
+          for (let key in notes) {
+            if (typeof notes[key] === "string") {
+              notes[key] = { content: notes[key], customTitle: "", important: false };
+            }
+          }
+        } catch(e) {
+          notes = {};
+        }
+      }
+    }
+    function saveNotes() {
+      localStorage.setItem('notes', JSON.stringify(notes));
+    }
+    
+    // Render danh sách note trong sidebar (bao gồm checkbox cho multi-select)
+    function renderNotesList() {
+      const listDiv = document.getElementById('notes-list');
+      listDiv.innerHTML = '';
+      const keys = Object.keys(notes).sort().reverse();
+      keys.forEach(key => {
+        const noteObj = notes[key];
+        const noteDiv = document.createElement('div');
+        noteDiv.className = 'note-item';
+        if (noteObj.important) {
+          noteDiv.classList.add('important');
+        }
+        if (key === currentNote) {
+          noteDiv.classList.add('active');
+        }
+        // Checkbox cho multi-select
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = key;
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+        noteDiv.appendChild(checkbox);
+        // Span chứa tên note; double-click để đổi tên (cập nhật customTitle)
+        const span = document.createElement('span');
+        span.textContent = formatNoteKey(key, noteObj);
+        span.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          const newName = prompt("Nhập tên mới cho note:", noteObj.customTitle || "");
+          if (newName !== null) {
+            noteObj.customTitle = newName;
+            saveNotes();
+            renderNotesList();
+            if (key === currentNote) {
+              document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(key, noteObj);
+            }
+          }
+        });
+        noteDiv.appendChild(span);
+        // Click để chọn note (nếu không có checkbox nào được chọn)
+        noteDiv.addEventListener('click', () => {
+          if (document.querySelectorAll('#notes-list input[type="checkbox"]:checked').length === 0) {
+            saveCurrentNote();
+            displayNote(key);
+          }
+        });
+        // Context menu cho note
+        noteDiv.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          saveCurrentNote();
+          displayNote(key);
+          showContextMenu(e.pageX, e.pageY);
+        });
+        listDiv.appendChild(noteDiv);
+      });
+    }
+    
+    function displayNote(key) {
+      currentNote = key;
+      const noteObj = notes[key];
+      document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(key, noteObj);
+      document.getElementById('note-content').value = noteObj.content || "";
+      renderNotesList();
+    }
+    
+    function saveCurrentNote() {
+      if (currentNote !== null) {
+        notes[currentNote].content = document.getElementById('note-content').value;
+        saveNotes();
+      }
+    }
+    
+    // Sinh key cho note mới theo định dạng "yyyy-mm-dd_HH-MM-SS"
+    function generateNoteKey() {
+      const now = new Date();
+      return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + "_" +
+             pad(now.getHours()) + "-" + pad(now.getMinutes()) + "-" + pad(now.getSeconds());
+    }
+    
+    function addNewNote() {
+      saveCurrentNote();
+      const key = generateNoteKey();
+      notes[key] = { content: "", customTitle: "", important: false };
+      saveNotes();
+      displayNote(key);
+    }
+    
+    function deleteCurrentNote() {
+      if (currentNote !== null) {
+        if (confirm("Bạn có chắc muốn xóa note này?")) {
+          delete notes[currentNote];
+          saveNotes();
+          const keys = Object.keys(notes).sort().reverse();
+          if (keys.length > 0) {
+            displayNote(keys[0]);
+          } else {
+            currentNote = null;
+            document.getElementById('note-title').textContent = "";
+            document.getElementById('note-content').value = "";
+          }
+          renderNotesList();
+        }
+      }
+    }
+    
+    function downloadCurrentNote() {
+      if (currentNote !== null) {
+        const content = notes[currentNote].content || "";
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `note-${currentNote}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    }
+    
+    // Xóa các note được chọn (multi-select) trong sidebar
+    function clearSelectedNotes() {
+      const checkboxes = document.querySelectorAll('#notes-list input[type="checkbox"]:checked');
+      if (checkboxes.length === 0) {
+        alert("Chưa chọn note nào để xóa.");
+        return;
+      }
+      if (confirm("Bạn có chắc muốn xóa các note được chọn?")) {
+        checkboxes.forEach(cb => {
+          const key = cb.value;
+          delete notes[key];
+          if (key === currentNote) {
+            currentNote = null;
+          }
+        });
+        saveNotes();
+        const keys = Object.keys(notes).sort().reverse();
+        if (keys.length > 0) {
+          displayNote(keys[0]);
+        } else {
+          document.getElementById('note-title').textContent = "";
+          document.getElementById('note-content').value = "";
+        }
+        renderNotesList();
+      }
+    }
+    
+    // ---------- XỬ LÝ CONTEXT MENU ----------
+    function showContextMenu(x, y) {
+      const menu = document.getElementById('context-menu');
+      if (notes[currentNote] && notes[currentNote].important) {
+        document.getElementById('context-crown').textContent = "Bỏ quan trọng (👑)";
+      } else {
+        document.getElementById('context-crown').textContent = "Đánh dấu quan trọng (👑)";
+      }
+      menu.style.top = y + 'px';
+      menu.style.left = x + 'px';
+      menu.style.display = 'block';
+    }
+    document.addEventListener('click', () => {
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    document.getElementById('context-download').addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadCurrentNote();
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    document.getElementById('context-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteCurrentNote();
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    document.getElementById('context-crown').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (currentNote !== null) {
+        notes[currentNote].important = !notes[currentNote].important;
+        saveNotes();
+        document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(currentNote, notes[currentNote]);
+        renderNotesList();
+      }
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    
+    // ---------- HIỂN THỊ THÔNG TIN THỜI GIAN ----------
+    function updateTimeInfo() {
+      let now = new Date();
+      let dd = pad(now.getDate());
+      let mm = pad(now.getMonth() + 1);
+      let yyyy = now.getFullYear();
+      let hh = pad(now.getHours());
+      let min = pad(now.getMinutes());
+      let ss = pad(now.getSeconds());
+      
+      let line1 = `Ngày: ${dd} - Tháng: ${mm} - Năm: ${yyyy} - Dương Lịch: ${dd}/${mm}/${yyyy}`;
+      // Tính Âm lịch theo dương lịch hiện tại (múi giờ +7)
+      let lunar = convertSolar2Lunar(parseInt(dd), parseInt(mm), yyyy, 7);
+      let lunarDay = pad(lunar[0]);
+      let lunarMonth = pad(lunar[1]);
+      let lunarYear = lunar[2];
+      line1 += ` - Âm Lịch: ${lunarDay}/${lunarMonth}/${lunarYear}${lunar[3] ? " (Nhuận)" : ""}`;
+      let line2 = `Giờ Việt Nam: ${hh}:${min}:${ss}`;
+      document.getElementById('timestamp').innerHTML = line1 + "<br>" + line2;
+    }
+    setInterval(updateTimeInfo, 1000);
+    
+    // ---------- CHUYỂN ĐỔI DƯƠNG LỊCH -> ÂM LỊCH ----------
+    const PI = Math.PI;
+    function INT(d) {
+      return Math.floor(d);
+    }
+    function jdFromDate(dd, mm, yy) {
+      var a = INT((14 - mm) / 12);
+      var y = yy + 4800 - a;
+      var m = mm + 12 * a - 3;
+      var jd = dd + INT((153 * m + 2) / 5) + 365 * y + INT(y / 4) - INT(y / 100) + INT(y / 400) - 32045;
+      if (jd < 2299161) {
+        jd = dd + INT((153 * m + 2) / 5) + 365 * y + INT(y / 4) - 32083;
+      }
+      return jd;
+    }
+    function jdToDate(jd) {
+      var a, b, c, d, e, m;
+      if (jd > 2299160) {
+        a = jd + 32044;
+        b = INT((4 * a + 3) / 146097);
+        c = a - INT((b * 146097) / 4);
+      } else {
+        b = 0;
+        c = jd + 32082;
+      }
+      d = INT((4 * c + 3) / 1461);
+      e = c - INT((1461 * d) / 4);
+      m = INT((5 * e + 2) / 153);
+      var day = e - INT((153 * m + 2) / 5) + 1;
+      var month = m + 3 - 12 * INT(m / 10);
+      var year = b * 100 + d - 4800 + INT(m / 10);
+      return [day, month, year];
+    }
+    function NewMoon(k) {
+      var T = k / 1236.85;
+      var T2 = T * T;
+      var T3 = T2 * T;
+      var dr = PI / 180;
+      var Jd1 = 2415020.75933 + 29.53058868 * k + 0.0001178 * T2 - 0.000000155 * T3;
+      Jd1 = Jd1 + 0.00033 * Math.sin((166.56 + 132.87 * T - 0.009173 * T2) * dr);
+      var M = 359.2242 + 29.10535608 * k - 0.0000333 * T2 - 0.00000347 * T3;
+      var Mpr = 306.0253 + 385.81691806 * k + 0.0107306 * T2 + 0.00001236 * T3;
+      var F = 21.2964 + 390.67050646 * k - 0.0016528 * T2 - 0.00000239 * T3;
+      var C1 = (0.1734 - 0.000393 * T) * Math.sin(M * dr) +
+               0.0021 * Math.sin(2 * dr * M) -
+               0.4068 * Math.sin(Mpr * dr) +
+               0.0161 * Math.sin(2 * dr * Mpr) - 
+               0.0004 * Math.sin(3 * dr * Mpr);
+      C1 = C1 + 0.0104 * Math.sin(2 * dr * F) -
+           0.0051 * Math.sin(dr * (M + Mpr)) -
+           0.0074 * Math.sin(dr * (M - Mpr)) +
+           0.0004 * Math.sin(dr * (2 * F + M)) -
+           0.0004 * Math.sin(dr * (2 * F - M)) - 
+           0.0006 * Math.sin(dr * (2 * F + Mpr)) +
+           0.0010 * Math.sin(dr * (2 * F - Mpr)) +
+           0.0005 * Math.sin(dr * (2 * Mpr + M));
+      var deltaT;
+      if (T < -11) {
+        deltaT = 0.001 + 0.000839 * T + 0.0002261 * T2 - 0.00000845 * T3 - 0.000000081 * T * T3;
+      } else {
+        deltaT = -0.000278 + 0.000265 * T + 0.000262 * T2;
+      }
+      var JdNew = Jd1 + C1 - deltaT;
+      return JdNew;
+    }
+    function SunLongitude(jdn) {
+      var T = (jdn - 2451545.0) / 36525;
+      var T2 = T * T;
+      var dr = PI / 180;
+      var M = 357.52910 + 35999.05030 * T - 0.0001559 * T2 - 0.00000048 * T * T2;
+      var L0 = 280.46645 + 36000.76983 * T + 0.0003032 * T2;
+      var DL = (1.914600 - 0.004817 * T - 0.000014 * T2) * Math.sin(dr * M);
+      DL = DL + (0.019993 - 0.000101 * T) * Math.sin(dr * 2 * M) + 0.000290 * Math.sin(dr * 3 * M);
+      var L = L0 + DL;
+      L = L * dr;
+      L = L - Math.PI * 2 * INT(L / (Math.PI * 2));
+      return L;
+    }
+    function getSunLongitude(dayNumber, timeZone) {
+      return SunLongitude(dayNumber - 0.5 - timeZone / 24);
+    }
+    function getLunarMonth11(yy, timeZone) {
+      var off = jdFromDate(31, 12, yy) - 2415021;
+      var k = INT(off / 29.530588853);
+      var nm = NewMoon(k);
+      var sunLong = getSunLongitude(INT(nm + 0.5), timeZone);
+      if (sunLong >= 3 * Math.PI / 2)
+        nm = NewMoon(k - 1);
+      return INT(nm + 0.5);
+    }
+    function getLeapMonthOffset(a11, timeZone) {
+      var k = INT(0.5 + (a11 - 2415021.076998695) / 29.530588853);
+      var last = 0;
+      var i = 1;
+      var arc = getSunLongitude(NewMoon(k + i), timeZone);
+      do {
+        last = arc;
+        i++;
+        arc = getSunLongitude(NewMoon(k + i), timeZone);
+      } while (arc != last && i < 14);
+      return i - 1;
+    }
+    function convertSolar2Lunar(dd, mm, yy, timeZone) {
+      var dayNumber = jdFromDate(dd, mm, yy);
+      var k = INT((dayNumber - 2415021.076998695) / 29.530588853);
+      var monthStart = NewMoon(k + 1);
+      if (monthStart > dayNumber + 1) {
+        monthStart = NewMoon(k);
+      }
+      var a11 = getLunarMonth11(yy, timeZone);
+      var b11 = a11;
+      var lunarYear;
+      if (a11 >= monthStart) {
+        lunarYear = yy;
+        a11 = getLunarMonth11(yy - 1, timeZone);
+      } else {
+        lunarYear = yy + 1;
+        b11 = getLunarMonth11(yy + 1, timeZone);
+      }
+      var lunarDay = Math.round(dayNumber - monthStart + 1);
+      var diff = INT((monthStart - a11) / 29);
+      var lunarMonth = diff + 11;
+      var leap = 0;
+      if (b11 - a11 > 365) {
+        var leapMonthDiff = getLeapMonthOffset(a11, timeZone);
+        if (diff >= leapMonthDiff) {
+          lunarMonth = diff + 10;
+          if (diff == leapMonthDiff) {
+            leap = 1;
+          }
+        }
+      }
+      if (lunarMonth > 12) {
+        lunarMonth = lunarMonth - 12;
+      }
+      if (lunarMonth >= 11 && diff < 4) {
+        lunarYear -= 1;
+      }
+      return [lunarDay, lunarMonth, lunarYear, leap];
+    }
+    
+    // ---------- KHỞI TẠO ỨNG DỤNG ----------
+    function init() {
+      loadNotes();
+      renderNotesList();
+      if (Object.keys(notes).length > 0) {
+        const keys = Object.keys(notes).sort().reverse();
+        displayNote(keys[0]);
+      } else {
+        addNewNote();
+      }
+      loadAvatar(); // Load ảnh avatar từ localStorage nếu có
+    }
+    window.addEventListener('load', init);
+    
+    // ---------- SỰ KIỆN CHO CÁC NÚT ----------
+    document.getElementById('add-note').addEventListener('click', addNewNote);
+    document.getElementById('download-note').addEventListener('click', downloadCurrentNote);
+    document.getElementById('delete-note').addEventListener('click', deleteCurrentNote);
+    document.getElementById('clear-selected').addEventListener('click', clearSelectedNotes);
+    // Auto lưu nội dung note khi người dùng nhập (để khi refresh vẫn lưu lại nội dung)
+    document.getElementById('note-content').addEventListener('input', saveCurrentNote);
+
+    // ---------- XỬ LÝ AVATAR ----------
+    function loadAvatar() {
+      const avatarData = localStorage.getItem('avatar');
+      if (avatarData) {
+        document.getElementById('avatar-img').src = avatarData;
+      }
+    }
+    // Khi nhấp vào ô avatar sẽ kích hoạt input chọn file
+    document.getElementById('avatar-container').addEventListener('click', function() {
+      document.getElementById('avatar-input').click();
+    });
+    // Sau khi chọn file, đọc file thành DataURL và lưu vào localStorage
+    document.getElementById('avatar-input').addEventListener('change', function() {
+      const file = this.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          document.getElementById('avatar-img').src = dataUrl;
+          localStorage.setItem('avatar', dataUrl);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+  </script>
+</body>
+</html>
