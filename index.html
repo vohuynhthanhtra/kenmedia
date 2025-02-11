@@ -33,12 +33,16 @@
       display: flex;
       align-items: center;
     }
-    /* Nếu note được đánh dấu quan trọng thì thay đổi màu nền */
+    /* Nếu ghi chú được đánh dấu quan trọng (vương miện) thì thay đổi màu nền */
     .note-item.important {
       background-color: #ffe0e0;
     }
+    /* Khi note được chọn (active) thì nền sẽ hiển thị màu xanh nhạt */
     .note-item.active {
-      background-color: #eaeaea;
+      background-color: #cceeff;
+    }
+    .note-item.dragging {
+      opacity: 0.5;
     }
     .note-item input[type="checkbox"] {
       margin-right: 5px;
@@ -64,12 +68,14 @@
       font-weight: bold;
     }
     /* Sắp xếp các nút theo thứ tự: Xóa note - Tải ghi chú về - Clear Selected - Dấu + */
+    /* (Không còn nút "Gim Top" ở header) */
     #note-header .buttons {
       margin-top: 10px;
       display: flex;
       gap: 10px;
       width: 100%;
       align-items: center;
+      flex-wrap: wrap;
     }
     /* Style cho các nút */
     #delete-note {
@@ -80,7 +86,6 @@
       font-size: 16px;
       cursor: pointer;
     }
-    /* Cập nhật nút "Tải ghi chú về" cùng kiểu với nút "Xóa note" */
     #download-note {
       background-color: transparent;
       color: red;
@@ -89,7 +94,6 @@
       font-size: 16px;
       cursor: pointer;
     }
-    /* Nút "Clear Selected" đổi thành màu vàng đồng nhạt với viền đen */
     #clear-selected {
       background-color: #FAFAD2;
       color: black;
@@ -98,7 +102,6 @@
       font-size: 16px;
       cursor: pointer;
     }
-    /* Nút "+" đổi thành nền xanh dương, chữ trắng, nằm sát nút "Clear Selected" */
     #add-note {
       background-color: blue;
       color: white;
@@ -123,7 +126,7 @@
       font-size: 14px;
       color: #666;
     }
-    /* Custom context menu */
+    /* Custom context menu với 4 mục */
     #context-menu {
       display: none;
       position: absolute;
@@ -163,21 +166,23 @@
     <div id="timestamp"></div>
   </div>
   
-  <!-- Custom context menu -->
+  <!-- Custom context menu với 4 mục -->
   <div id="context-menu">
     <div id="context-download" class="context-menu-item">Tải ghi chú về .txt</div>
     <div id="context-delete" class="context-menu-item">Xóa note</div>
-    <div id="context-crown" class="context-menu-item"></div>
+    <div id="context-pin" class="context-menu-item"></div>
+    <div id="context-important" class="context-menu-item"></div>
   </div>
   
   <script>
     // ---------- HÀM HỖ TRỢ ----------
-    function pad(num) {
-      return String(num).padStart(2, '0');
+    // Hàm pad với đối số kích thước (default là 2)
+    function pad(num, size = 2) {
+      return String(num).padStart(size, '0');
     }
     // Hàm định dạng tên note:
     // Nếu có customTitle thì dùng customTitle, ngược lại sử dụng key theo định dạng "dd/mm/yyyy (HH:MM)".
-    // Sau đó, nếu note được đánh dấu quan trọng (important = true) thì luôn thêm biểu tượng vương miện (👑) ở đầu.
+    // Nếu note được "gim top" (pinned) thì thêm icon 📌, nếu "quan trọng" thì thêm icon 👑.
     function formatNoteKey(key, noteObj) {
       let base = "";
       if (noteObj.customTitle && noteObj.customTitle.trim() !== "") {
@@ -190,18 +195,25 @@
         if (dateParts.length !== 3 || timeParts.length < 2) return key;
         base = dateParts[2] + "/" + dateParts[1] + "/" + dateParts[0] + " (" + timeParts[0] + ":" + timeParts[1] + ")";
       }
-      if (noteObj.important) {
-        return "👑 " + base;
+      let prefix = "";
+      if (noteObj.pinned) {
+         prefix += "📌 ";
       }
-      return base;
+      if (noteObj.important) {
+         prefix += "👑 ";
+      }
+      return prefix + base;
     }
     
-    // ---------- QUẢN LÝ NOTE ----------
-    // Mỗi note được lưu dưới dạng: { content: string, customTitle: string, important: boolean }
+    // ---------- QUẢN LÝ NOTE & THỨ TỰ ----------
+    // Mỗi note được lưu dưới dạng: { content: string, customTitle: string, important: boolean, pinned: boolean }
     let notes = {};
     let currentNote = null;
+    // Hai mảng lưu thứ tự của ghi chú "gim top" (pinned) và chưa "gim top" (unpinned)
+    let pinnedNotesOrder = [];
+    let unpinnedNotesOrder = [];
     
-    // Tải note từ localStorage (chuyển đổi nếu cần)
+    // Tải note và thứ tự từ localStorage
     function loadNotes() {
       const saved = localStorage.getItem('notes');
       if (saved) {
@@ -209,24 +221,69 @@
           notes = JSON.parse(saved);
           for (let key in notes) {
             if (typeof notes[key] === "string") {
-              notes[key] = { content: notes[key], customTitle: "", important: false };
+              notes[key] = { content: notes[key], customTitle: "", important: false, pinned: false };
+            }
+            // Đảm bảo có thuộc tính pinned (mặc định false nếu chưa có)
+            if (notes[key].pinned === undefined) {
+              notes[key].pinned = false;
+            }
+            if (notes[key].important === undefined) {
+              notes[key].important = false;
             }
           }
         } catch(e) {
           notes = {};
         }
       }
+      // Load thứ tự từ localStorage (nếu có)
+      const savedPinned = localStorage.getItem('pinnedNotesOrder');
+      const savedUnpinned = localStorage.getItem('unpinnedNotesOrder');
+      if (savedPinned && savedUnpinned) {
+        try {
+          pinnedNotesOrder = JSON.parse(savedPinned);
+          unpinnedNotesOrder = JSON.parse(savedUnpinned);
+        } catch(e) {
+          pinnedNotesOrder = [];
+          unpinnedNotesOrder = [];
+        }
+      } else {
+        // Nếu chưa có, khởi tạo từ các key hiện có
+        pinnedNotesOrder = [];
+        unpinnedNotesOrder = [];
+        Object.keys(notes).forEach(key => {
+          if (notes[key].pinned)
+            pinnedNotesOrder.push(key);
+          else
+            unpinnedNotesOrder.push(key);
+        });
+      }
     }
     function saveNotes() {
       localStorage.setItem('notes', JSON.stringify(notes));
+      localStorage.setItem('pinnedNotesOrder', JSON.stringify(pinnedNotesOrder));
+      localStorage.setItem('unpinnedNotesOrder', JSON.stringify(unpinnedNotesOrder));
     }
     
-    // Render danh sách note trong sidebar (bao gồm checkbox cho multi-select)
+    // Render danh sách note trong sidebar theo thứ tự (gim top ở trên, sau đó là không gim top)
     function renderNotesList() {
       const listDiv = document.getElementById('notes-list');
       listDiv.innerHTML = '';
-      const keys = Object.keys(notes).sort().reverse();
-      keys.forEach(key => {
+      
+      // Loại bỏ các key không tồn tại
+      pinnedNotesOrder = pinnedNotesOrder.filter(key => notes.hasOwnProperty(key));
+      unpinnedNotesOrder = unpinnedNotesOrder.filter(key => notes.hasOwnProperty(key));
+      // Nếu có ghi chú nào chưa có trong mảng thứ tự thì thêm vào mảng phù hợp
+      Object.keys(notes).forEach(key => {
+        if (!pinnedNotesOrder.includes(key) && !unpinnedNotesOrder.includes(key)) {
+          if (notes[key].pinned)
+            pinnedNotesOrder.push(key);
+          else
+            unpinnedNotesOrder.push(key);
+        }
+      });
+      const orderKeys = pinnedNotesOrder.concat(unpinnedNotesOrder);
+      
+      orderKeys.forEach(key => {
         const noteObj = notes[key];
         const noteDiv = document.createElement('div');
         noteDiv.className = 'note-item';
@@ -236,6 +293,36 @@
         if (key === currentNote) {
           noteDiv.classList.add('active');
         }
+        // Cho phép kéo thả: thiết lập draggable và các sự kiện liên quan
+        noteDiv.setAttribute('draggable', true);
+        noteDiv.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', key);
+          noteDiv.classList.add('dragging');
+        });
+        noteDiv.addEventListener('dragend', (e) => {
+          noteDiv.classList.remove('dragging');
+        });
+        noteDiv.addEventListener('dragover', (e) => {
+          e.preventDefault();
+        });
+        noteDiv.addEventListener('drop', (e) => {
+          e.preventDefault();
+          let draggedKey = e.dataTransfer.getData('text/plain');
+          if (draggedKey === key) return;
+          // Chỉ cho phép kéo thả trong cùng nhóm (dựa trên thuộc tính pinned)
+          if (notes[draggedKey].pinned === noteObj.pinned) {
+            let arr = noteObj.pinned ? pinnedNotesOrder : unpinnedNotesOrder;
+            let fromIndex = arr.indexOf(draggedKey);
+            let toIndex = arr.indexOf(key);
+            if (fromIndex > -1 && toIndex > -1) {
+              arr.splice(fromIndex, 1);
+              arr.splice(toIndex, 0, draggedKey);
+            }
+            saveNotes();
+            renderNotesList();
+          }
+        });
+        
         // Checkbox cho multi-select
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -244,9 +331,11 @@
           e.stopPropagation();
         });
         noteDiv.appendChild(checkbox);
-        // Span chứa tên note; double-click để đổi tên (cập nhật customTitle)
+        
+        // Span chứa tên note
         const span = document.createElement('span');
         span.textContent = formatNoteKey(key, noteObj);
+        // Dblclick để đổi tên note
         span.addEventListener('dblclick', (e) => {
           e.stopPropagation();
           const newName = prompt("Nhập tên mới cho note:", noteObj.customTitle || "");
@@ -260,13 +349,16 @@
           }
         });
         noteDiv.appendChild(span);
-        // Click để chọn note (nếu không có checkbox nào được chọn)
-        noteDiv.addEventListener('click', () => {
+        
+        // Click đơn để chọn note
+        noteDiv.addEventListener('click', (e) => {
+          // Nếu không có checkbox nào được chọn thì chỉ chọn note này
           if (document.querySelectorAll('#notes-list input[type="checkbox"]:checked').length === 0) {
             saveCurrentNote();
             displayNote(key);
           }
         });
+        
         // Context menu cho note
         noteDiv.addEventListener('contextmenu', (e) => {
           e.preventDefault();
@@ -293,17 +385,19 @@
       }
     }
     
-    // Sinh key cho note mới theo định dạng "yyyy-mm-dd_HH-MM-SS"
+    // Sinh key cho note mới theo định dạng "yyyy-mm-dd_HH-MM-SS-ms"
     function generateNoteKey() {
       const now = new Date();
       return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + "_" +
-             pad(now.getHours()) + "-" + pad(now.getMinutes()) + "-" + pad(now.getSeconds());
+             pad(now.getHours()) + "-" + pad(now.getMinutes()) + "-" + pad(now.getSeconds()) + "-" + pad(now.getMilliseconds(), 3);
     }
     
     function addNewNote() {
       saveCurrentNote();
       const key = generateNoteKey();
-      notes[key] = { content: "", customTitle: "", important: false };
+      // Mặc định note mới: chưa quan trọng và chưa gim top
+      notes[key] = { content: "", customTitle: "", important: false, pinned: false };
+      unpinnedNotesOrder.push(key);
       saveNotes();
       displayNote(key);
     }
@@ -312,10 +406,15 @@
       if (currentNote !== null) {
         if (confirm("Bạn có chắc muốn xóa note này?")) {
           delete notes[currentNote];
+          let idx = pinnedNotesOrder.indexOf(currentNote);
+          if (idx > -1) pinnedNotesOrder.splice(idx, 1);
+          idx = unpinnedNotesOrder.indexOf(currentNote);
+          if (idx > -1) unpinnedNotesOrder.splice(idx, 1);
           saveNotes();
-          const keys = Object.keys(notes).sort().reverse();
+          const keys = Object.keys(notes);
           if (keys.length > 0) {
-            displayNote(keys[0]);
+            const orderKeys = pinnedNotesOrder.concat(unpinnedNotesOrder);
+            displayNote(orderKeys[0]);
           } else {
             currentNote = null;
             document.getElementById('note-title').textContent = "";
@@ -352,14 +451,19 @@
         checkboxes.forEach(cb => {
           const key = cb.value;
           delete notes[key];
+          let idx = pinnedNotesOrder.indexOf(key);
+          if (idx > -1) pinnedNotesOrder.splice(idx, 1);
+          idx = unpinnedNotesOrder.indexOf(key);
+          if (idx > -1) unpinnedNotesOrder.splice(idx, 1);
           if (key === currentNote) {
             currentNote = null;
           }
         });
         saveNotes();
-        const keys = Object.keys(notes).sort().reverse();
+        const keys = Object.keys(notes);
         if (keys.length > 0) {
-          displayNote(keys[0]);
+          const orderKeys = pinnedNotesOrder.concat(unpinnedNotesOrder);
+          displayNote(orderKeys[0]);
         } else {
           document.getElementById('note-title').textContent = "";
           document.getElementById('note-content').value = "";
@@ -371,10 +475,17 @@
     // ---------- XỬ LÝ CONTEXT MENU ----------
     function showContextMenu(x, y) {
       const menu = document.getElementById('context-menu');
-      if (notes[currentNote] && notes[currentNote].important) {
-        document.getElementById('context-crown').textContent = "Bỏ quan trọng (👑)";
+      // Cập nhật nội dung menu cho mục "Gim Top" (Pin)
+      if (notes[currentNote] && notes[currentNote].pinned) {
+        document.getElementById('context-pin').innerHTML = "Bỏ Gim Top <span>📌</span>";
       } else {
-        document.getElementById('context-crown').textContent = "Đánh dấu quan trọng (👑)";
+        document.getElementById('context-pin').innerHTML = "Gim Top <span>📌</span>";
+      }
+      // Cập nhật nội dung menu cho mục "Quan trọng"
+      if (notes[currentNote] && notes[currentNote].important) {
+        document.getElementById('context-important').innerHTML = "Bỏ Quan Trọng <span>👑</span>";
+      } else {
+        document.getElementById('context-important').innerHTML = "Quan Trọng <span>👑</span>";
       }
       menu.style.top = y + 'px';
       menu.style.left = x + 'px';
@@ -393,16 +504,56 @@
       deleteCurrentNote();
       document.getElementById('context-menu').style.display = 'none';
     });
-    document.getElementById('context-crown').addEventListener('click', (e) => {
+    document.getElementById('context-pin').addEventListener('click', (e) => {
       e.stopPropagation();
+      togglePinCurrentNote();
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    document.getElementById('context-important').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleImportantCurrentNote();
+      document.getElementById('context-menu').style.display = 'none';
+    });
+    
+    // Hàm toggle "Gim Top" (pin) cho ghi chú hiện tại
+    function togglePinCurrentNote() {
+      if (currentNote !== null) {
+        if (pinnedNotesOrder.includes(currentNote)) {
+          // Nếu đang gim top → bỏ gim
+          let idx = pinnedNotesOrder.indexOf(currentNote);
+          if (idx > -1) pinnedNotesOrder.splice(idx, 1);
+          if (!unpinnedNotesOrder.includes(currentNote)) {
+            unpinnedNotesOrder.push(currentNote);
+          }
+          notes[currentNote].pinned = false;
+        } else {
+          // Nếu chưa gim top → chuyển sang gim top
+          let idx = unpinnedNotesOrder.indexOf(currentNote);
+          if (idx > -1) unpinnedNotesOrder.splice(idx, 1);
+          if (!pinnedNotesOrder.includes(currentNote)) {
+            pinnedNotesOrder.unshift(currentNote);
+          }
+          notes[currentNote].pinned = true;
+        }
+        saveNotes();
+        renderNotesList();
+        if (currentNote !== null) {
+          document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(currentNote, notes[currentNote]);
+        }
+      }
+    }
+    
+    // Hàm toggle "Quan trọng" cho ghi chú hiện tại
+    function toggleImportantCurrentNote() {
       if (currentNote !== null) {
         notes[currentNote].important = !notes[currentNote].important;
         saveNotes();
-        document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(currentNote, notes[currentNote]);
         renderNotesList();
+        if (currentNote !== null) {
+          document.getElementById('note-title').textContent = "Ghi chú: " + formatNoteKey(currentNote, notes[currentNote]);
+        }
       }
-      document.getElementById('context-menu').style.display = 'none';
-    });
+    }
     
     // ---------- HIỂN THỊ THÔNG TIN THỜI GIAN ----------
     function updateTimeInfo() {
@@ -472,7 +623,7 @@
       var C1 = (0.1734 - 0.000393 * T) * Math.sin(M * dr) +
                0.0021 * Math.sin(2 * dr * M) -
                0.4068 * Math.sin(Mpr * dr) +
-               0.0161 * Math.sin(2 * dr * Mpr) -
+               0.0161 * Math.sin(2 * dr * Mpr) - 
                0.0004 * Math.sin(3 * dr * Mpr);
       C1 = C1 + 0.0104 * Math.sin(2 * dr * F) -
            0.0051 * Math.sin(dr * (M + Mpr)) -
@@ -572,8 +723,9 @@
       loadNotes();
       renderNotesList();
       if (Object.keys(notes).length > 0) {
-        const keys = Object.keys(notes).sort().reverse();
-        displayNote(keys[0]);
+        // Nếu có ghi chú, hiển thị note đầu tiên theo thứ tự lưu
+        const orderKeys = pinnedNotesOrder.concat(unpinnedNotesOrder);
+        displayNote(orderKeys[0]);
       } else {
         addNewNote();
       }
